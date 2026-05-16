@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="EPIC Log">
+<meta name="apple-mobile-web-app-title" content="Workout Tracker">
 <meta name="theme-color" content="#0d0d0f">
-<title>EPIC Log</title>
+<title>Workout Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@400;500;700&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -65,6 +65,12 @@
   input:focus,select:focus{border-color:var(--gold);background:var(--panel-2);}
   ::placeholder{color:#4a4a52;}
   input[inputmode=decimal],input[inputmode=numeric]{text-align:center;}
+  input[type=date]{
+    -webkit-appearance:none;appearance:none;color-scheme:dark;
+    font-family:'JetBrains Mono',monospace;font-size:15px;min-height:48px;
+  }
+  input[type=date]::-webkit-date-and-time-value{text-align:left;}
+  input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.7);opacity:0.7;}
 
   .pickbar{display:flex;gap:10px;margin-bottom:18px;}
   .btn{
@@ -250,8 +256,8 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="brand">EPIC<span>.</span>LOG</div>
-    <div class="stamp" id="stamp">—</div>
+    <div class="brand">Workout<span>.</span>Tracker</div>
+    <div class="stamp" id="stamp">&mdash;</div>
   </header>
 
   <div class="cfg" id="cfgBanner" style="display:none">
@@ -279,7 +285,7 @@
     </div>
     <div class="f dt">
       <div class="lbl">Date</div>
-      <input type="text" id="sessDate" placeholder="DD-MM-YYYY" inputmode="numeric" autocomplete="off" oninput="persist()">
+      <input type="date" id="sessDate" autocomplete="off" oninput="persist()">
     </div>
   </div>
 
@@ -323,13 +329,26 @@ function promptUrl(){
 }
 function pad(n){ return String(n).padStart(2,'0'); }
 function todayStr(){ const d=new Date(); return pad(d.getDate())+'-'+pad(d.getMonth()+1)+'-'+d.getFullYear(); }
+// native <input type=date> uses ISO YYYY-MM-DD; the model/Sheet use DD-MM-YYYY
+function isoToday(){ const d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function ddmmToIso(s){
+  if(!s) return isoToday();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;            // already ISO
+  const m=s.match(/^(\d{2})-(\d{2})-(\d{4})$/);          // DD-MM-YYYY
+  return m ? m[3]+'-'+m[2]+'-'+m[1] : isoToday();
+}
+function isoToDdmm(s){
+  if(!s) return todayStr();
+  const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);          // ISO -> DD-MM-YYYY
+  return m ? m[3]+'-'+m[2]+'-'+m[1] : s;
+}
 
 /* ---------- crash-safe draft ---------- */
 let persistT;
 function persist(){
   if(!model) return;
   model.name=document.getElementById('sessName').value;
-  model.date=document.getElementById('sessDate').value;
+  model.date=isoToDdmm(document.getElementById('sessDate').value);
   clearTimeout(persistT);
   persistT=setTimeout(()=>{ try{ localStorage.setItem(DRAFT_KEY,JSON.stringify({t:Date.now(),model})); }catch(e){} },250);
 }
@@ -430,7 +449,7 @@ function render(){
       }).join('');
       return '<div class="ex" data-eid="'+ex.id+'">'
         +'<div class="ex-head">'
-        +'<input class="ex-name" value="'+escAttr(ex.name)+'" placeholder="Exercise name" oninput="setExName(\''+sec.id+'\',\''+ex.id+'\',this.value)">'
+        +'<input class="ex-name" autocapitalize="words" value="'+escAttr(ex.name)+'" placeholder="Exercise name" oninput="setExName(\''+sec.id+'\',\''+ex.id+'\',this.value)">'
         +'<button class="icon-btn del" onclick="delExercise(\''+sec.id+'\',\''+ex.id+'\')">&#128465;</button>'
         +'</div><div class="set-rows">'+setRows
         +'<button class="add-set" onclick="addSet(\''+sec.id+'\',\''+ex.id+'\')">&#65291; ADD SET</button>'
@@ -440,7 +459,7 @@ function render(){
     const dn=sec.exercises.reduce(function(a,e){return a+e.sets.filter(function(s){return s.done;}).length;},0);
     return '<div class="section" data-sid="'+sec.id+'">'
       +'<div class="sec-head">'
-      +'<input class="sec-name" value="'+escAttr(sec.name)+'" placeholder="Section (Warmup, Main, Super Set...)" oninput="setSecName(\''+sec.id+'\',this.value)">'
+      +'<input class="sec-name" autocapitalize="words" value="'+escAttr(sec.name)+'" placeholder="Section (Warmup, Main, Super Set...)" oninput="setSecName(\''+sec.id+'\',this.value)">'
       +'<span class="sec-prog"><b>'+dn+'</b>/'+tot+'</span>'
       +'<button class="icon-btn del" onclick="delSection(\''+sec.id+'\')">&#128465;</button>'
       +'</div>'+exHtml
@@ -539,7 +558,7 @@ function resetSession(){
 }
 function hydrateMeta(){
   document.getElementById('sessName').value=model.name||'';
-  document.getElementById('sessDate').value=model.date||todayStr();
+  document.getElementById('sessDate').value=ddmmToIso(model.date||todayStr());
 }
 let toastT;
 function toast(kind,msg){
