@@ -1,2 +1,2 @@
-# epic-tracker
+# IPhone Workout Tracker
 Training Log
