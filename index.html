@@ -321,10 +321,12 @@
 <script>
 const URL_KEY='epicLogWebAppUrl';
 const DRAFT_KEY='epicLogDraft';
+// Baked-in backend URL. A manually set URL (localStorage) still wins if ever changed.
+const DEFAULT_URL='https://script.google.com/macros/s/AKfycby7s_kAGkMVGvYdiPpO_hSrPZs-sVCHDTQ3nzrLeaRJktwPXxTpZeanKSgus2rWhLJV/exec';
 let model=null, uid=1;
 function nid(){ return 'i'+(uid++)+Math.random().toString(36).slice(2,6); }
 
-function getUrl(){ return localStorage.getItem(URL_KEY)||''; }
+function getUrl(){ return localStorage.getItem(URL_KEY)||DEFAULT_URL; }
 function setUrl(u){ localStorage.setItem(URL_KEY,u.trim()); }
 function promptUrl(){
   const u=prompt('Paste your Apps Script Web App URL\n(ends in /exec)', getUrl());
@@ -345,6 +347,16 @@ function isoToDdmm(s){
   const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);          // ISO -> DD-MM-YYYY
   return m ? m[3]+'-'+m[2]+'-'+m[1] : s;
 }
+// Auto session name, e.g. "Sun 17-05-26"
+const DAY_ABBR=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function defaultSessionName(){
+  const d=new Date();
+  const yy=String(d.getFullYear()).slice(-2);
+  return DAY_ABBR[d.getDay()]+' '+pad(d.getDate())+'-'+pad(d.getMonth()+1)+'-'+yy;
+}
+// True if a name looks auto-generated ("Sun 17-05-26"), so we can safely refresh
+// it past midnight without ever clobbering a name the user typed themselves.
+function isAutoName(s){ return /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}-\d{2}-\d{2}$/.test((s||'').trim()); }
 
 /* ---------- crash-safe draft ---------- */
 let persistT;
@@ -378,6 +390,34 @@ function discardRestore(){ clearDraft(); document.getElementById('restoreBanner'
 
 /* ---------- model ops ---------- */
 function blankModel(){ return { name:'', date:todayStr(), sections:[] }; }
+// Default session skeleton on a fresh open (no draft to resume).
+// Warmup is pre-populated with the standard band routine; all editable/deletable.
+// [name, weightKg, reps, sets]
+const WARMUP_DEFAULT=[
+  ['Rear Delt Bands',0,20,2],
+  ['Band Flutters',0,20,2],
+  ['Lock Lat Pull Bands',0,20,2],
+  ['Internal Rotation Bands',0,20,2],
+  ['Front Raise Bands',0,20,2],
+  ['Lying Side Glute Bands',0,10,2],
+  ['Crab Walk Bands',0,10,2]
+];
+function mkSet(w,r){ return { id:nid(), weight:w||0, reps:r||0, done:false }; }
+function templateModel(){
+  var warmEx=WARMUP_DEFAULT.map(function(d){
+    var sets=[]; for(var i=0;i<d[3];i++) sets.push(mkSet(d[1],d[2]));
+    return { id:nid(), name:d[0], sets:sets };
+  });
+  return {
+    name:defaultSessionName(), date:todayStr(),
+    sections:[
+      { id:nid(), name:'Warmup', exercises:warmEx },
+      { id:nid(), name:'Main', exercises:[] },
+      { id:nid(), name:'Super Set 1', exercises:[] },
+      { id:nid(), name:'Super Set 2', exercises:[] }
+    ]
+  };
+}
 function addSection(name){
   model.sections.push({ id:nid(), name:name||'', exercises:[] });
   render(); persist();
@@ -557,7 +597,7 @@ function resetSession(){
   if(model.sections.some(function(s){return s.exercises.length;})){
     if(!confirm('Start a fresh session? Current one will be cleared (unsaved data lost).')) return;
   }
-  clearDraft(); model=blankModel(); hydrateMeta(); render();
+  clearDraft(); model=templateModel(); hydrateMeta(); render();
 }
 function hydrateMeta(){
   document.getElementById('sessName').value=model.name||'';
@@ -574,11 +614,24 @@ function toast(kind,msg){
 
 /* boot */
 document.getElementById('stamp').textContent=todayStr();
-model=blankModel(); hydrateMeta();
+model=templateModel(); hydrateMeta();
 checkRestore();
 render();
-if(!getUrl()){ document.getElementById('cfgBanner').style.display='block'; }
-document.addEventListener('visibilitychange',function(){ if(document.hidden) persist(); });
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden){ persist(); return; }
+  // Came back to foreground. If left open past midnight and the name is still
+  // auto-generated (user hasn't typed their own), refresh it to the new day.
+  if(model && isAutoName(model.name)){
+    var fresh=defaultSessionName();
+    if(model.name!==fresh){
+      model.name=fresh;
+      model.date=todayStr();
+      hydrateMeta();
+      persist();
+    }
+  }
+  document.getElementById('stamp').textContent=todayStr();
+});
 window.addEventListener('pagehide', persist);
 </script>
 </body>
